@@ -1,0 +1,51 @@
+#include <Wire.h>
+#include <TEA5767.h>
+
+TEA5767 radio = TEA5767();
+
+float currentFrequency = 88.0;  // Start scanning from here
+const float maxFrequency = 108.0;
+const float step = 0.1;         // Step size in MHz    // Button for next station
+
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();
+  radio.setFrequency(currentFrequency);
+  Serial.println("FM Radio Ready");
+}
+
+void loop() {
+  // If button is pressed (LOW)
+  if (Serial.available()>0){ 
+    if(Serial.read() == 'a'){
+      delay(200); // debounce
+      findNextStation();
+    }
+  }
+}
+
+void findNextStation() {
+  currentFrequency += step;
+
+  if (currentFrequency > maxFrequency) {
+    currentFrequency = 88.0; // Wrap around to start
+  }
+
+  while (currentFrequency <= maxFrequency) {
+    radio.setFrequency(currentFrequency);
+    delay(150); // Give time for signal to stabilize
+    
+    uint8_t signalLevel = radio.getSignalLevel(); // 0-15 scale
+    Serial.print("Checking: ");
+    Serial.print(currentFrequency);
+    Serial.print(" MHz - Signal Level: ");
+    Serial.println(signalLevel);
+    
+    if (signalLevel >= 8) { // Threshold for "good" station
+      Serial.print("Found Station at: ");
+      Serial.println(currentFrequency);
+      break; // Stay tuned here
+    }
+    currentFrequency += step;
+  }
+}
