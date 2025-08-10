@@ -1,51 +1,122 @@
 #include <Wire.h>
+#include <LiquidCrystal.h>
 #include <TEA5767.h>
 
-TEA5767 radio = TEA5767();
+LiquidCrystal lcd(8,9,4,5,6,7);
+TEA5767 radio=TEA5767();
 
-float currentFrequency = 88.0;  // Start scanning from here
+float currentFrequency = 88.0;  
 const float maxFrequency = 108.0;
-const float step = 0.1;         // Step size in MHz    // Button for next station
+const float step = 0.1;
+const int bp = A0;      
+int buttonPin;
+int count = 0;
+float previousStation[30];
+float currentStation;
+uint8_t signalLevel;
+int first_push=1;
 
 void setup() {
+  radio.setMuted(true);
   Serial.begin(9600);
   Wire.begin();
+  lcd.begin(16,2);
   radio.setFrequency(currentFrequency);
   Serial.println("FM Radio Ready");
+  lcd.print("FM Radio");
+  lcd.setCursor(0,1);
+  lcd.print("READY!! Press right");
+  delay(200);
 }
 
 void loop() {
-  // If button is pressed (LOW)
-  if (Serial.available()>0){ 
-    if(Serial.read() == 'a'){
-      delay(200); // debounce
-      findNextStation();
+  buttonPin = analogRead(bp);
+
+  if (buttonPin < 25 && buttonPin >= 0) { // RIGHT button
+    radio.setMuted(true);
+    count++;
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Searching");
+    currentStation = findNextStation();
+    radio.setMuted(false);
+    previousStation[count]=currentStation;
+    delay(200);
+  }
+  else if (buttonPin > 400 && buttonPin < 430) { // left button
+    if(count<=1){
+      lcd.clear();
+      lcd.print("Last station");
+      lcd.setCursor(0,1);
+      lcd.print("Reached");
+    }
+    else{
+      count-=1;
+      radio.setFrequency(previousStation[count]);
+      currentFrequency=previousStation[count];
+      Serial.print("Playing station: ");
+      Serial.println(previousStation[count]);
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("FM:");
+      lcd.print(previousStation[count]);
+      lcd.print(" MHz");
+      lcd.setCursor(0,1);
+      lcd.print("Signal:");
+      lcd.print(radio.getSignalLevel());
+      delay(300);
+    }
+  }
+  else if(buttonPin>=600 && buttonPin<=700){//select button for mute
+    first_push++;
+    if(first_push%2==0){
+      radio.setMuted(true);
+      delay(100);
+    }
+    else{
+      radio.setMuted(false);
+      delay(100);
     }
   }
 }
 
-void findNextStation() {
+float findNextStation() {
   currentFrequency += step;
-
   if (currentFrequency > maxFrequency) {
-    currentFrequency = 88.0; // Wrap around to start
+    lcd.clear();
+    lcd.print("Last station reached");
   }
 
   while (currentFrequency <= maxFrequency) {
     radio.setFrequency(currentFrequency);
-    delay(150); // Give time for signal to stabilize
+    delay(150);
     
-    uint8_t signalLevel = radio.getSignalLevel(); // 0-15 scale
+    signalLevel = radio.getSignalLevel();
     Serial.print("Checking: ");
     Serial.print(currentFrequency);
     Serial.print(" MHz - Signal Level: ");
     Serial.println(signalLevel);
     
-    if (signalLevel >= 8) { // Threshold for "good" station
+    if (signalLevel >= 6) { 
       Serial.print("Found Station at: ");
       Serial.println(currentFrequency);
-      break; // Stay tuned here
+      lcd.setCursor(0,0);
+      lcd.print("FM:");
+      lcd.print(currentFrequency);
+      lcd.print(" MHz");
+      lcd.setCursor(0,1);
+      lcd.print("Signal:");
+      lcd.print(signalLevel);
+      break;
     }
     currentFrequency += step;
   }
+  if(currentFrequency == 108.00 && signalLevel<5){
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Reached End");
+    lcd.setCursor(0,1);
+    lcd.print("No signalsfound");
+  }
+  return currentFrequency;
 }
